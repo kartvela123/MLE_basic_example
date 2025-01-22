@@ -8,12 +8,15 @@
         "results_dir": "results"
     },
     "train": {
-        "table_name": "xor_train_data.csv",
-        "data_sample": 50,
-        "test_size": 0.3
+        "table_name": "Iris_train_data.csv",
+        "data_sample": 80,
+        "test_size": 0.3,
+        "n_epochs": 50,
+        "batch_size": 32,
+        "learning_rate": 0.001
     },
     "inference": {
-        "inp_table_name": "xor_inference_data.csv",
+        "inp_table_name": "Iris_inference_data.csv",
         "model_name": "prod_model.pickle" 
     }
 }

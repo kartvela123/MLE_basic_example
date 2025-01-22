@@ -1,6 +1,6 @@
 # Dockerfile for training
 # Start from a base Python image
-FROM python:3.10
+FROM python:3.12.2
 
 ARG model_name=prod_model.pickle
 ARG settings_name=settings.json

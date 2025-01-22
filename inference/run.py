@@ -11,13 +11,15 @@ import pickle
 import sys
 from datetime import datetime
 from typing import List
-
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
-
+import torch
+import re
 # Adds the root directory to system path
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(ROOT_DIR))
+
+from training.train import IrissNN
 
 # Change to CONF_FILE = "settings.json" if you have problems with env variables
 CONF_FILE = os.getenv('CONF_PATH')
@@ -47,21 +49,27 @@ def get_latest_model_path() -> str:
     latest = None
     for (dirpath, dirnames, filenames) in os.walk(MODEL_DIR):
         for filename in filenames:
-            if not latest or datetime.strptime(latest, conf['general']['datetime_format'] + '.pickle') < \
-                    datetime.strptime(filename, conf['general']['datetime_format'] + '.pickle'):
+            if not latest or datetime.strptime(latest, conf['general']['datetime_format'] + '.pth') < \
+                    datetime.strptime(filename, conf['general']['datetime_format'] + '.pth'):
                 latest = filename
     return os.path.join(MODEL_DIR, latest)
 
-
-def get_model_by_path(path: str) -> DecisionTreeClassifier:
+def get_model_by_path(path: str):
     """Loads and returns the specified model"""
     try:
-        with open(path, 'rb') as f:
-            model = pickle.load(f)
-            logging.info(f'Path of the model: {path}')
-            return model
+        # Initialize the model architecture
+        model = IrissNN()
+
+        # Load the state dictionary
+        model.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
+        
+        # Set the model to evaluation mode
+        model.eval()
+
+        logging.info(f"Model successfully loaded from: {path}")
+        return model
     except Exception as e:
-        logging.error(f'An error occurred while loading the model: {e}')
+        logging.error(f"An error occurred while loading the model: {e}")
         sys.exit(1)
 
 
@@ -75,10 +83,29 @@ def get_inference_data(path: str) -> pd.DataFrame:
         sys.exit(1)
 
 
-def predict_results(model: DecisionTreeClassifier, infer_data: pd.DataFrame) -> pd.DataFrame:
-    """Predict de results and join it with the infer_data"""
-    results = model.predict(infer_data)
-    infer_data['results'] = results
+def predict_results(model, infer_data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Predict the results using a PyTorch model and join them with the input DataFrame.
+
+    Args:
+        model (nn.Module): The PyTorch model.
+        infer_data (pd.DataFrame): Input data as a Pandas DataFrame.
+
+    Returns:
+        pd.DataFrame: Input DataFrame with predictions added as a new column.
+    """
+    model.eval()  # Ensure the model is in evaluation mode
+
+    # Convert DataFrame to a PyTorch tensor
+    infer_tensor = torch.tensor(infer_data.values, dtype=torch.float32)
+
+    # Perform inference
+    with torch.no_grad():  # Disable gradient computation
+        outputs = model(infer_tensor)  # Forward pass
+        predictions = torch.argmax(outputs, dim=1).numpy()  # Convert logits to class predictions
+
+    # Add predictions to the DataFrame
+    infer_data['results'] = predictions
     return infer_data
 
 
@@ -97,8 +124,12 @@ def main():
     """Main function"""
     configure_logging()
     args = parser.parse_args()
+    print(get_latest_model_path())
+    model = get_latest_model_path()
+    #"22.01.2025_01.18.pth"
+    model_path = os.path.join(MODEL_DIR, model)
 
-    model = get_model_by_path(get_latest_model_path())
+    model = get_model_by_path(model_path)
     infer_file = args.infer_file
     infer_data = get_inference_data(os.path.join(DATA_DIR, infer_file))
     results = predict_results(model, infer_data)
